@@ -25,7 +25,8 @@ function Sync-RamWatchData([string]$root, [hashtable]$state) {
     $files = @(Get-ChildItem (Join-Path $root 'metrics') -File -Filter '*.jsonl' -EA SilentlyContinue) +
              @(Get-ChildItem (Join-Path $root 'reports') -File -EA SilentlyContinue | Where-Object { $_.Name -match '\.(md|snapshot\.json)$' }) +
              @(Get-ChildItem (Join-Path $root 'daily') -File -Filter '*.json' -EA SilentlyContinue) +
-             @(Get-ChildItem (Join-Path $root 'drivers') -File -Filter 'latest.csv' -EA SilentlyContinue)
+             @(Get-ChildItem (Join-Path $root 'drivers') -File -Filter 'latest.csv' -EA SilentlyContinue) +
+             @(Get-ChildItem (Join-Path $root 'power-events') -File -EA SilentlyContinue | Where-Object { $_.Name -match '\.(jsonl|md|csv)$' })
     $ok = 0; $fail = 0
     foreach ($f in $files) {
         $rel = ($f.FullName.Substring($root.Length + 1)) -replace '\\', '/'
@@ -35,7 +36,7 @@ function Sync-RamWatchData([string]$root, [hashtable]$state) {
     }
     # local retention: only delete what is safely on GitHub
     # (drivers/latest.csv is the baseline for tomorrow's diff, so it is never pruned)
-    $cut = @{ metrics = (Get-Date).AddDays(-3); reports = (Get-Date).AddDays(-7); daily = (Get-Date).AddDays(-7); drivers = [datetime]::MinValue }
+    $cut = @{ metrics = (Get-Date).AddDays(-3); reports = (Get-Date).AddDays(-7); daily = (Get-Date).AddDays(-7); drivers = [datetime]::MinValue; 'power-events' = (Get-Date).AddDays(-14) }
     foreach ($f in $files) {
         $rel = ($f.FullName.Substring($root.Length + 1)) -replace '\\', '/'
         $dir = $rel.Split('/')[0]

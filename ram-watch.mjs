@@ -51,6 +51,8 @@ The "daily" section (once a day) has: battery report (responsive or hung, design
 previous day, Reliability Monitor records (app crashes/hangs, Windows failures, installs), pending reboot/updates, volume free space,
 SSD health counters, and how far back the System event log reaches. Treat sudden battery capacity drops or a battery that stops
 answering as a possible swollen/failing battery.
+"power_switches_24h" lists every charger/battery switch with the load at that moment; kind "charger_dropout" means the PC fell to
+battery and the charger came back by itself within 60 s (a cut-out under load or a bad cable/plug, not an unplug).
 If "local_triggers" is present, this run was started by those local rules: address them first.
 Be short and concrete. The FIRST line must be exactly "STATUS: OK" or "STATUS: ALERT".
 Then: a 1-2 line summary, then a bullet list of problems (what, how many, how much memory, why it looks stuck), then what to close or do.

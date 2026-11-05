@@ -76,7 +76,14 @@ foreach ($e in $health.events) {
               ($e.src -in 'Microsoft-Windows-WER-SystemErrorReporting', 'nvlddmkm', 'Display', 'Microsoft-Windows-WHEA-Logger') -or
               (($e.src -like 'Bth*' -or $e.src -eq 'BTHUSB') -and ($e.level -in 'Error', 'Critical')))
     if ($crash) { Fire "event:$($e.src):$($e.id)" 1 "$($e.t) $($e.src) $($e.id): $($e.msg)" }
+    # unexpected shutdown: pull the black-box minutes before it (power-guard.ps1 layer 3), if installed
+    if (($e.src -eq 'Microsoft-Windows-Kernel-Power' -and $e.id -eq 41) -or ($e.src -eq 'EventLog' -and $e.id -eq 6008)) {
+        & (Join-Path $root 'power-event.ps1') -ExportCrash | Out-Null
+    }
 }
+# repeated charger cut-outs today (recorded by power-event.ps1)
+$dropouts = @(Get-Content (Join-Path $root "power-events\$($now.ToString('yyyy-MM-dd')).jsonl") -EA SilentlyContinue | Where-Object { $_ -match '"charger_dropout"' }).Count
+if ($dropouts -ge 3) { Fire 'charger_dropouts' 12 "$dropouts charger cut-outs today (PC fell back to battery and the charger came back)" }
 foreach ($dev in 'gpu', 'bluetooth') {
     $cur = "$($health[$dev].status)/$($health[$dev].problem)"
     if ($state.devices[$dev] -and $state.devices[$dev] -ne $cur) { Fire "device:$dev`:$cur" 0 "$dev changed: $($state.devices[$dev]) -> $cur" }

@@ -22,6 +22,11 @@ $snapshot = Get-RamSnapshot
 $snapshot.health = Get-HealthSample -Since (Get-Date).AddHours(-24)
 $dailyFile = Get-ChildItem (Join-Path $root 'daily') -Filter '*.json' -EA SilentlyContinue | Sort-Object Name | Select-Object -Last 1
 if ($dailyFile) { $snapshot.daily = Get-Content $dailyFile.FullName -Raw | ConvertFrom-Json }
+# charger/battery switches from the last 24 h (power-event.ps1)
+$since = (Get-Date).AddHours(-24)
+$pe = @(Get-ChildItem (Join-Path $root 'power-events') -Filter '*.jsonl' -EA SilentlyContinue | Sort-Object Name | Select-Object -Last 2 |
+    ForEach-Object { Get-Content $_.FullName } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { [datetime]$_.t -gt $since })
+if ($pe) { $snapshot.power_switches_24h = $pe | Select-Object -Last 30 }
 if ($Trigger) { $snapshot.local_triggers = $Trigger }
 $json = $snapshot | ConvertTo-Json -Depth 5 -Compress
 $snapPath = Join-Path $reportDir "$stamp.snapshot.json"
