@@ -1,0 +1,4 @@
+Answer in English.
+The PC is a <model> with <N> GB RAM.
+Known history: <e.g. "the GPU driver crashed when the charger was unplugged", "an antivirus driver leaked non-paged pool (pool tags Xx01)">.
+Devices disabled on purpose: <e.g. Bluetooth>.

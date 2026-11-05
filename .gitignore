@@ -1,0 +1,26 @@
+# Allow-list: only the code is public. Everything this machine produces stays local.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/*.ps1
+!/ram-watch.mjs
+!/startup-config.example.json
+!/machine-notes.example.txt
+
+# never publish (also covered by the rule above, listed for clarity)
+auth/
+reports/
+metrics/
+daily/
+drivers/
+driver-backup/
+siwc-devkit/
+state.json
+monitor.log
+latest.md
+machine-notes.txt
+startup-config.json
+github-repo.txt
+model.txt
+node-path.txt

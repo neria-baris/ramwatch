@@ -1,0 +1,13 @@
+{
+    "run_key_apps": [
+        "Steam",
+        "Spotify",
+        "MicrosoftEdgeAutoLaunch_*"
+    ],
+    "startup_folder": [
+        "*Example Tool*.lnk"
+    ],
+    "services_to_manual": [
+        "ExampleUpdateService"
+    ]
+}
