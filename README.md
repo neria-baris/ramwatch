@@ -69,23 +69,6 @@ PCs, and applying your `startup-config.json`.
 | `startup-config.json` | apps/services for `disable-startup.ps1`. See `startup-config.example.json`. |
 | `github-repo.txt` | `owner/name` of the private data repo (written by `setup.ps1 -GitHubRepo`). |
 
-## Power guard (charger ↔ battery crashes)
-
-`power-guard.ps1 -Install` (Administrator) targets laptops that crash when they fall from the charger to the battery
-under load. Nothing can react within the milliseconds of a real power loss, so it works around that:
-
-1. **Remove the trigger** – battery uses the same device power policy as the charger in every power plan (PCIe Link
-   State Power Management off, Wi-Fi adapter at maximum performance, USB selective suspend off). A charger cut-out no
-   longer makes the GPU / Wi-Fi / Bluetooth drivers switch power states at that very moment.
-2. **Lower load peaks** – maximum processor state 99 % (Turbo Boost off) so the charger is less likely to be overloaded.
-   `-UncapTurbo` / `-CapTurbo` toggle only this layer.
-3. **Black box** – a task started by the power-source event itself (no resident process) records CPU/GPU load, top
-   processes and device state at every switch, and pops up when the charger came back within 60 s (a cut-out, not an
-   unplug). A 1-second circular performance log (Windows' own logging service) runs alongside; after an unexpected
-   shutdown the minutes before it are exported to `power-events\crash-*.csv`.
-
-`-Status` shows what is applied; `-Uninstall` restores the original values from `power-guard-backup.json`.
-
 ## Extra tools
 
 - `fix-wlanext.ps1` – when `wlanext.exe` keeps growing (Wi-Fi vendor extension leak): `-Status`,

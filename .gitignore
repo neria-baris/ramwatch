@@ -15,8 +15,6 @@ metrics/
 daily/
 drivers/
 driver-backup/
-power-events/
-power-guard-backup.json
 siwc-devkit/
 state.json
 monitor.log
