@@ -51,6 +51,13 @@ The "daily" section (once a day) has: battery report (responsive or hung, design
 previous day, Reliability Monitor records (app crashes/hangs, Windows failures, installs), pending reboot/updates, volume free space,
 SSD health counters, and how far back the System event log reaches. Treat sudden battery capacity drops or a battery that stops
 answering as a possible swollen/failing battery.
+"headless_browsers" lists automation browsers (headless / remote-debugging) per browser tree with "launched_by", the tool chain
+that started it (e.g. "node.exe @playwright/mcp < claude.exe"). An orphaned tree means that tool exited without closing its
+browser: name the tool, so the owner can fix it there.
+"stuck_processes" (from a SYSTEM check) explains processes that exited but are still alive: their threads are blocked inside a
+driver (thread wait reasons, open handle types - e.g. many "File" handles = sockets/files with I/O that never completes) and
+who else holds them open. Nothing can kill them; a reboot frees them. To name the driver, the owner can create a live kernel
+dump (Task Manager as Administrator > Details > right-click System > Create live kernel memory dump file) for analysis.
 If "local_triggers" is present, this run was started by those local rules: check each one against the CURRENT data in this
 snapshot first - a trigger that no longer holds is not an alert.
 Data freshness: "ram", "processes" and "health" are measured now; "daily" may be older (see "daily.freshness" / "taken_at").

@@ -4,8 +4,10 @@
 #   3. Battery driver: on a non-Surface PC that picked up Microsoft's "Surface" battery INF, switch back to
 #      Windows' own battery driver (the INF is exported first; it rolls back on failure).
 #   4. Turn off the auto-start apps/services listed in startup-config.json (skipped if that file doesn't exist).
-# Options: -SkipBattery  -SkipStartup  -RestoreBattery (undo step 3)
-param([switch]$SkipBattery, [switch]$SkipStartup, [switch]$RestoreBattery)
+#   5. SYSTEM task every 15 min (stuck-check.ps1): for processes that exited but are still alive, record what their
+#      threads are blocked on and who holds them, so RamWatch can say why they are stuck.
+# Options: -SkipBattery  -SkipStartup  -RestoreBattery (undo step 3)  -StuckCheckOnly (just step 5)
+param([switch]$SkipBattery, [switch]$SkipStartup, [switch]$RestoreBattery, [switch]$StuckCheckOnly)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -28,6 +30,23 @@ if ($RestoreBattery) {
     "Battery driver now: $((Get-BatteryDriverInfo).Name)"
     return
 }
+
+# ---- 5. stuck-process check (SYSTEM, every 15 min; script copied into the admin-only folder) ----
+function Install-StuckCheck {
+    Write-Host '[5] Stuck-process check' -ForegroundColor Cyan
+    $pd = 'C:\ProgramData\RamWatch'
+    if (-not (Test-Path $pd)) { throw "Run setup-admin.ps1 once without -StuckCheckOnly first (it creates $pd)." }
+    Copy-Item (Join-Path $root 'stuck-check.ps1') "$pd\stuck-check.ps1" -Force
+    $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$pd\stuck-check.ps1`""
+    $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
+    $every = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
+    Register-ScheduledTask -TaskName 'RamWatchStuckCheck' -Action $act -Trigger $every -Settings $set -User 'SYSTEM' -RunLevel Highest `
+        -Description 'RamWatch: why processes that exited are still alive' -Force | Out-Null
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$pd\stuck-check.ps1"
+    $r = Get-Content "$pd\stuck-holders.json" -Raw | ConvertFrom-Json
+    "  installed; stuck processes right now: $($r.stuck_count)"
+}
+if ($StuckCheckOnly) { Install-StuckCheck; return }
 
 # ---- 1. event log sizes ----
 Write-Host '[1/4] Event log sizes' -ForegroundColor Cyan
@@ -89,4 +108,5 @@ if (-not $SkipStartup -and (Test-Path (Join-Path $root 'startup-config.json'))) 
     Write-Host '[4/4] Auto-start apps and services' -ForegroundColor Cyan
     & (Join-Path $root 'disable-startup.ps1')
 }
+Install-StuckCheck
 Write-Host 'Done.' -ForegroundColor Green

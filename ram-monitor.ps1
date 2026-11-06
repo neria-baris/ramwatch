@@ -50,6 +50,7 @@ $line = [ordered]@{
     pool_top = @($snap.kernel_pool_top_tags | Select-Object -First 3 | ForEach-Object { "$($_.tag.Trim()):$([math]::Round($_.nonpaged_mb))MB" })
     wlanext_mb = if ($wlanext) { [math]::Round($wlanext.PrivateMemorySize64 / 1MB) } else { $null }
     zombies = $snap.exited_but_alive_total; procs = $snap.process_count
+    headless = "$(@($snap.headless_browsers).Count) trees/$(@($snap.headless_browsers | Where-Object orphaned).Count) orphaned"
     big = @($snap.big_processes | ForEach-Object { "$($_.name):$($_.private_mb)MB/$($_.age_h)h" })
     ac = $health.ac; battery_pct = $health.battery_pct; battery_state = $health.battery_state; c_free_gb = $health.c_free_gb
     thermal_c = @($health.thermal | ForEach-Object { $_.c }); throttle = @($health.thermal | ForEach-Object { $_.throttle })
@@ -68,7 +69,16 @@ if ($health.c_free_gb -lt 15) { Fire 'c_low' 12 "drive C: only $($health.c_free_
 $commitPct = [math]::Round(100 * $snap.commit_used_gb / $snap.commit_limit_gb)
 if ($commitPct -ge $CommitHighPct) { Fire 'commit_high' 3 "commit $commitPct% of limit" }
 if ($snap.nonpaged_pool_mb -ge $NonPagedHighMB) { Fire 'nonpaged_high' 24 "non-paged pool $($snap.nonpaged_pool_mb) MB" }
-if ($snap.exited_but_alive_total -ge $ZombiesHigh) { Fire 'zombies' 24 "$($snap.exited_but_alive_total) processes exited but still alive" }
+if ($snap.exited_but_alive_total -ge $ZombiesHigh) {
+    $why = "$($snap.exited_but_alive_total) processes exited but still alive"
+    if ($snap.stuck_processes) { $why += " (stuck-check: held open by $(@($snap.stuck_processes.held_open_by) -join ', ')$(if (-not $snap.stuck_processes.held_open_by) { 'nobody - threads blocked in a driver' }))" }
+    Fire 'zombies' 24 $why
+}
+# automation browsers whose launching tool is gone for over an hour: name the tool that leaks them
+foreach ($g in @($snap.headless_browsers | Where-Object { $_.orphaned -and $_.age_h -ge 1 }) | Group-Object launched_by) {
+    $n = ($g.Group | Measure-Object processes -Sum).Sum; $mb = ($g.Group | Measure-Object private_mb -Sum).Sum
+    Fire "headless_orphan:$($g.Name)" 12 "$($g.Count) orphaned headless browser(s) ($n processes, $mb MB) left by: $($g.Name)"
+}
 foreach ($f in $snap.repeated_process_families | Where-Object { $_.flags -match '--headless' -and $_.count -ge $HeadlessHigh }) {
     Fire "headless:$($f.name)" 12 "$($f.count) headless $($f.name) processes ($($f.private_mb) MB, $($f.orphaned) orphaned)"
 }

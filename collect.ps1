@@ -15,6 +15,73 @@ function Summarize-Cmd([string]$cmd) {
     Redact ((($out | Select-Object -Unique) -join ' '))
 }
 
+# Headless / automation browsers and the tool that started them. The root of a browser tree is its first browser
+# process; the root's parent chain (up to 3 levels) is the tool - an MCP server, a print/PDF script, an agent.
+# The chain is remembered in headless-launchers.json while the tool is alive, so a browser orphaned later still
+# says who left it behind.
+$script:BrowserExe = 'chrome.exe', 'msedge.exe', 'chromium.exe', 'brave.exe', 'chrome-headless-shell.exe', 'headless_shell.exe', 'firefox.exe'
+$script:AutomationFlags = '--headless|--remote-debugging-(port|pipe)|--enable-automation|-marionette'
+# exe + npm package / script names from a command line, e.g. "node.exe @playwright/mcp cli.js" - no paths or values
+function Get-ToolName($c) {
+    if (-not $c) { return $null }
+    $bits = foreach ($t in ([regex]::Matches("$($c.CommandLine)", '"[^"]*"|\S+') | ForEach-Object { $_.Value.Trim('"') } | Select-Object -Skip 1)) {
+        if ($t -match '(?i)node_modules[\\/]+((?:@[^\\/]+[\\/])?[^\\/]+)') { $Matches[1] -replace '\\', '/' }
+        elseif ($t -match '^@[\w.-]+/[\w.-]+') { $Matches[0] }
+        elseif ($t -match '(?i)\.(py|js|ts|mjs|cjs|ps1|bat|cmd)$') { Split-Path $t -Leaf }
+    }
+    Redact ("$($c.Name) " + (($bits | Select-Object -Unique | Select-Object -First 3) -join ' ')).Trim()
+}
+function Get-HeadlessBrowsers($cim, $byPid, [datetime]$now, $exitedIds) {
+    $memPath = Join-Path $PSScriptRoot 'headless-launchers.json'
+    $mem = @{}
+    if (Test-Path $memPath) { try { (Get-Content $memPath -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $mem[$_.Name] = $_.Value } } catch { } }
+    $rootOf = @{}
+    foreach ($c in $cim | Where-Object { $_.Name -in $script:BrowserExe }) {
+        $r = $c
+        for ($i = 0; $i -lt 20; $i++) {
+            $pp = $byPid[[int]$r.ParentProcessId]
+            if ($pp -and $pp.Name -eq $r.Name -and $pp.CreationDate -le $r.CreationDate) { $r = $pp } else { break }
+        }
+        $rootOf[[int]$c.ProcessId] = $r
+    }
+    $out = foreach ($g in ($cim | Where-Object { $rootOf.ContainsKey([int]$_.ProcessId) } | Group-Object { [int]$rootOf[[int]$_.ProcessId].ProcessId })) {
+        if (-not ($g.Group | Where-Object { "$($_.CommandLine)" -match $script:AutomationFlags })) { continue }
+        $root = $rootOf[[int]$g.Group[0].ProcessId]
+        $key = "$($root.ProcessId)@$($root.CreationDate.ToString('s'))"
+        $chain = @(); $a = $root
+        for ($i = 0; $i -lt 3; $i++) {
+            $pp = $byPid[[int]$a.ParentProcessId]
+            if (-not $pp -or $pp.CreationDate -gt $a.CreationDate) { break }
+            $chain += Get-ToolName $pp; $a = $pp
+        }
+        if ($chain) { $mem[$key] = [pscustomobject]@{ chain = $chain -join ' < '; seen = $now.ToString('s') } }
+        elseif ($mem[$key]) { $mem[$key].seen = $now.ToString('s') }
+        [pscustomobject]@{
+            browser = $root.Name; root_pid = [int]$root.ProcessId; processes = $g.Count
+            private_mb = [math]::Round(($g.Group | Measure-Object PrivatePageCount -Sum).Sum / 1MB)
+            age_h = [math]::Round(($now - $root.CreationDate).TotalHours, 1)
+            orphaned = -not $chain
+            exited_but_alive = @($g.Group | Where-Object { $exitedIds.Contains([int]$_.ProcessId) }).Count
+            launched_by = $(if ($chain) { $chain -join ' < ' } elseif ($mem[$key]) { "$($mem[$key].chain) (exited)" } else { 'unknown (the launcher exited before RamWatch saw it)' })
+        }
+    }
+    # forget launchers of browsers not seen for a week
+    $keep = [ordered]@{}
+    foreach ($k in $mem.Keys) { try { if (($now - [datetime]$mem[$k].seen).TotalDays -lt 7) { $keep[$k] = $mem[$k] } } catch { } }
+    try { [IO.File]::WriteAllText($memPath, ($keep | ConvertTo-Json -Depth 3), (New-Object Text.UTF8Encoding $false)) } catch { }
+    @($out | Sort-Object private_mb -Descending)
+}
+# Written every 15 min by the SYSTEM task stuck-check.ps1 (setup-admin.ps1): why exited processes are still there.
+function Get-StuckInfo {
+    $p = 'C:\ProgramData\RamWatch\stuck-holders.json'
+    if (-not (Test-Path $p)) { return $null }
+    try {
+        $s = Get-Content $p -Raw | ConvertFrom-Json
+        if (((Get-Date) - [datetime]$s.checked_at).TotalMinutes -gt 40 -or -not $s.stuck_count) { return $null }
+        [ordered]@{ checked_at = $s.checked_at; stuck_count = $s.stuck_count; held_open_by = $s.held_open_by; processes = @($s.processes | Select-Object -First 10) }
+    } catch { $null }
+}
+
 function Get-PoolTags {
     if (-not ('RwPool' -as [type])) {
         Add-Type -TypeDefinition @"
@@ -77,6 +144,7 @@ function Get-RamSnapshot {
             name = $_.Group[0].Name; flags = $_.Group[0].Flags; count = $_.Count
             private_mb = [math]::Round(($_.Group | Measure-Object Priv -Sum).Sum / 1MB)
             orphaned = @($_.Group | Where-Object Orphan).Count
+            exited_but_alive = @($_.Group | Where-Object Exited).Count
             oldest_h = ($_.Group | Measure-Object AgeH -Maximum).Maximum
         }
     } | Sort-Object private_mb -Descending | Select-Object -First 25
@@ -89,6 +157,9 @@ function Get-RamSnapshot {
         ForEach-Object { [pscustomobject]@{ name = $_.Name; pid = $_.Id; private_mb = [math]::Round($_.Priv / 1MB); ws_mb = [math]::Round($_.WS / 1MB); age_h = $_.AgeH; orphan = $_.Orphan; flags = $_.Flags } }
 
     $poolTop = @(); try { $poolTop = Get-PoolTags } catch {}
+    $exitedIds = New-Object 'System.Collections.Generic.HashSet[int]'
+    foreach ($x in $procs | Where-Object Exited) { [void]$exitedIds.Add([int]$x.Id) }
+    $headless = @(); try { $headless = Get-HeadlessBrowsers $cim $byPid $now $exitedIds } catch {}
 
     [ordered]@{
         taken_at = $now.ToString('s')
@@ -105,6 +176,8 @@ function Get-RamSnapshot {
         top_process_groups = $groups
         repeated_process_families = $families
         suspicious_processes = $suspicious
+        headless_browsers = $headless
+        stuck_processes = Get-StuckInfo
         kernel_pool_top_tags = $poolTop
     }
 }
