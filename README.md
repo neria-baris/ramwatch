@@ -87,6 +87,10 @@ PCs, and applying your `startup-config.json`.
   `-DisableIhv` / `-RestoreIhv` (stop loading the vendor extension, reversible), or `-InstallGuard`
   (hourly SYSTEM task that restarts WlanSvc above a limit).
 - `disable-startup.ps1 -WhatIf` – preview the auto-start changes before applying them.
+- `run-in-job.ps1 [-TimeoutSec N] <program> [args...]` – runs a program in a Windows Job Object that is killed when
+  the wrapper ends, so nothing it started (a headless browser from a print script or an MCP server, for example) can
+  outlive it. Prints nothing itself, so it also works as an MCP server `command`. Tell your coding agents to run
+  browser-launching scripts through it, e.g. in `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`.
 
 ## Handy commands
 
