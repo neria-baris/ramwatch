@@ -178,10 +178,9 @@ function Invoke-WithTimeout([scriptblock]$block, [int]$seconds, [object[]]$argum
     [pscustomobject]@{ ok = $false; value = $null }
 }
 
-function Get-DailyHealth([string]$root) {
-    $day = [ordered]@{ date = (Get-Date).ToString('yyyy-MM-dd'); taken_at = (Get-Date).ToString('s') }
-
-    # battery: capacity / wear / cycles. Known to hang on this machine, so record responsiveness too.
+# battery: capacity / wear / cycles (~5 s). Known to hang on this machine, so record responsiveness too.
+# Used by the daily run and by ram-watch.ps1 when the daily battery data is stale.
+function Get-BatteryHealth {
     $batStart = Get-Date
     # A hung battery query leaves powercfg stuck in the kernel (unkillable until the driver answers or a reboot).
     # Never add another one on top of it.
@@ -193,17 +192,24 @@ function Get-DailyHealth([string]$root) {
         $bt = $b.BatteryReport.Batteries.Battery | Select-Object -First 1
         [ordered]@{ design_mwh = [int]$bt.DesignCapacity; full_mwh = [int]$bt.FullChargeCapacity; cycles = [int]$bt.CycleCount; chemistry = "$($bt.Chemistry)"; id = "$($bt.Id)" }
     } 30 }
-    $day.battery = if ($bat.ok -and $bat.value) {
+    $o = if ($bat.ok -and $bat.value) {
         $v = $bat.value
-        $o = [ordered]@{ responsive = $true; design_mwh = $v.design_mwh; full_mwh = $v.full_mwh; cycles = $v.cycles; chemistry = $v.chemistry; id = $v.id }
-        if ($v.design_mwh) { $o.health_pct = [math]::Round(100 * $v.full_mwh / $v.design_mwh) }
-        $o
+        $r = [ordered]@{ responsive = $true; design_mwh = $v.design_mwh; full_mwh = $v.full_mwh; cycles = $v.cycles; chemistry = $v.chemistry; id = $v.id }
+        if ($v.design_mwh) { $r.health_pct = [math]::Round(100 * $v.full_mwh / $v.design_mwh) }
+        $r
     } elseif ($bat.stuck) {
         [ordered]@{ responsive = $false; note = "skipped: an earlier battery query is still stuck in the driver since $($stuck[0].StartTime.ToString('s'))" }
     } else { [ordered]@{ responsive = $false; note = 'battery report did not answer within 30s (driver/EC hang)' } }
     # the job is gone, but a hung powercfg child would stay behind - don't leave our own leftovers
     Get-Process powercfg -EA SilentlyContinue | Where-Object { $_.StartTime -ge $batStart } | Stop-Process -Force -EA SilentlyContinue
-    $day.battery.driver = (Get-PnpDevice -Class Battery -EA SilentlyContinue | Where-Object FriendlyName -like '*Battery*' | Select-Object -First 1).FriendlyName
+    $o.driver = (Get-PnpDevice -Class Battery -EA SilentlyContinue | Where-Object FriendlyName -like '*Battery*' | Select-Object -First 1).FriendlyName
+    $o.taken_at = (Get-Date).ToString('s')
+    $o
+}
+
+function Get-DailyHealth([string]$root) {
+    $day = [ordered]@{ date = (Get-Date).ToString('yyyy-MM-dd'); taken_at = (Get-Date).ToString('s') }
+    $day.battery = Get-BatteryHealth
 
     # driver inventory + what changed since the previous day
     $drv = Invoke-WithTimeout {

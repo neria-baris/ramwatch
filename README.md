@@ -35,6 +35,10 @@ summaries. No file contents.
   every slow query (WMI, battery, Windows Update) runs time-boxed in a child process, and a watchdog kills
   any RamWatch process older than 20 minutes.
 - It only reads and reports. It never closes processes or changes settings on its own.
+- The 15-minute check runs at normal priority, so it still runs when the PC is under full load.
+- Reviews use fresh data: an old daily battery reading is re-measured, and alerts from the last 48 h are passed to the
+  model so a known, unchanged problem doesn't pop up again. A failed model call is retried once; if it still fails,
+  the local findings are shown unreviewed (a scheduled run with nothing found just logs `STATUS: ERROR`, no popup).
 
 ## Install
 
@@ -67,6 +71,7 @@ PCs, and applying your `startup-config.json`.
 | `model.txt` | model slug, e.g. `gpt-6-luna` (default: first model with "mini", else the first listed). `RAMWATCH_REASONING` env var sets the effort (default `high`). |
 | `machine-notes.txt` | known history of your PC and the answer language; appended to the model instructions. See `machine-notes.example.txt`. |
 | `startup-config.json` | apps/services for `disable-startup.ps1`. See `startup-config.example.json`. |
+| `thresholds.json` | per-machine overrides for the monitor thresholds, e.g. `{ "NonPagedHighMB": 2600 }` when an antivirus holds a large pool by design. |
 | `github-repo.txt` | `owner/name` of the private data repo (written by `setup.ps1 -GitHubRepo`). |
 
 ## Extra tools

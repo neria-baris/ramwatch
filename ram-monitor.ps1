@@ -3,6 +3,9 @@
 # escalates to ram-watch.ps1 (ChatGPT review + notification). Pushes data to GitHub hourly.
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
+# Task Scheduler starts tasks below normal priority; under a long full-CPU load the check then never got to run,
+# which is exactly when it matters. It is short (~10 s), so normal priority costs nothing.
+try { (Get-Process -Id $PID).PriorityClass = 'Normal' } catch { }
 # watchdog: never let an older RamWatch run linger (a hung WMI/event-log call, a stuck node child)
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='node.exe' OR Name='gh.exe'" -EA SilentlyContinue |
     Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'RamWatch' -and $_.CommandLine -notmatch 'popup\.ps1' -and $_.CreationDate -lt (Get-Date).AddMinutes(-20) } |
@@ -19,6 +22,9 @@ $HeadlessHigh    = 10     # headless browser processes in one family
 $BigOldMB        = 4096   # single process private memory ...
 $BigOldHours     = 24     # ... older than this
 $HotC            = 90     # thermal zone temperature
+# per-machine overrides, e.g. {"NonPagedHighMB": 2600} when an antivirus legitimately allocates a big pool at boot
+$ovPath = Join-Path $root 'thresholds.json'
+if (Test-Path $ovPath) { (Get-Content $ovPath -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { Set-Variable -Name $_.Name -Value $_.Value } }
 
 $statePath = Join-Path $root 'state.json'
 function ConvertTo-Hash($o) {

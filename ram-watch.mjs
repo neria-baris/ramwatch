@@ -51,7 +51,13 @@ The "daily" section (once a day) has: battery report (responsive or hung, design
 previous day, Reliability Monitor records (app crashes/hangs, Windows failures, installs), pending reboot/updates, volume free space,
 SSD health counters, and how far back the System event log reaches. Treat sudden battery capacity drops or a battery that stops
 answering as a possible swollen/failing battery.
-If "local_triggers" is present, this run was started by those local rules: address them first.
+If "local_triggers" is present, this run was started by those local rules: check each one against the CURRENT data in this
+snapshot first - a trigger that no longer holds is not an alert.
+Data freshness: "ram", "processes" and "health" are measured now; "daily" may be older (see "daily.freshness" / "taken_at").
+When they disagree, the newer data wins - never alert on an old reading that the current data contradicts.
+"previous_alerts" are alerts the owner already got in the last 48 h. A problem that is already there and has NOT gotten worse,
+and anything the machine notes say is fixed or known, is not a new alert: list it briefly under "known, unchanged".
+Use "STATUS: ALERT" only for something new, worse than before, or needing action now.
 Be short and concrete. The FIRST line must be exactly "STATUS: OK" or "STATUS: ALERT".
 Then: a 1-2 line summary, then a bullet list of problems (what, how many, how much memory, why it looks stuck), then what to close or do.
 If everything is fine, say so briefly. Answer in English unless the machine notes below ask for another language.`;

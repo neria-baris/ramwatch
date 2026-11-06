@@ -21,7 +21,27 @@ if (-not $Node) { $Node = 'node' }
 $snapshot = Get-RamSnapshot
 $snapshot.health = Get-HealthSample -Since (Get-Date).AddHours(-24)
 $dailyFile = Get-ChildItem (Join-Path $root 'daily') -Filter '*.json' -EA SilentlyContinue | Sort-Object Name | Select-Object -Last 1
-if ($dailyFile) { $snapshot.daily = Get-Content $dailyFile.FullName -Raw | ConvertFrom-Json }
+if ($dailyFile) {
+    $snapshot.daily = Get-Content $dailyFile.FullName -Raw | ConvertFrom-Json
+    # The daily file can be up to a day old (or from before a reboot / driver fix). Never let the model alert on
+    # stale data: re-measure the battery now (~5 s) and say how old the rest of the daily section is.
+    $taken = try { [datetime]$snapshot.daily.taken_at } catch { $dailyFile.LastWriteTime }
+    $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+    if (((Get-Date) - $taken).TotalHours -gt 3 -or $taken -lt $boot) {
+        $snapshot.daily | Add-Member -NotePropertyName battery -NotePropertyValue (Get-BatteryHealth) -Force
+        $snapshot.daily | Add-Member -NotePropertyName freshness -NotePropertyValue ("battery re-measured now; everything else in 'daily' is from $($taken.ToString('s'))" + $(if ($taken -lt $boot) { ', before the last boot' })) -Force
+    }
+}
+# Alerts already shown in the last 48 h: the model reports a known, unchanged problem without a new ALERT.
+# (Failed reviews are left out - they say nothing about the PC.)
+$prev = @(Get-ChildItem $reportDir -Filter '*.md' -EA SilentlyContinue | Where-Object LastWriteTime -gt (Get-Date).AddHours(-48) |
+    Sort-Object LastWriteTime | ForEach-Object {
+        $t = [IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8)
+        if ($t -match 'STATUS:\s*ALERT' -and $t -notmatch 'model review failed|not connected to ChatGPT|could not reach ChatGPT') {
+            [ordered]@{ at = $_.LastWriteTime.ToString('s'); report = $(if ($t.Length -gt 1500) { $t.Substring(0, 1500) + '...' } else { $t }) }
+        }
+    } | Select-Object -Last 3)
+if ($prev) { $snapshot.previous_alerts = $prev }
 if ($Trigger) { $snapshot.local_triggers = $Trigger }
 $json = $snapshot | ConvertTo-Json -Depth 5 -Compress
 $snapPath = Join-Path $reportDir "$stamp.snapshot.json"
@@ -29,9 +49,26 @@ $snapPath = Join-Path $reportDir "$stamp.snapshot.json"
 
 # ---------- ask the model (Sign in with ChatGPT) ----------
 $outPath = Join-Path $reportDir "$stamp.answer.txt"
-$log = & $Node (Join-Path $root 'ram-watch.mjs') review $snapPath $outPath 2>&1 | Out-String
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path $outPath)) {
-    $text = "STATUS: ALERT`nRAM watch could not reach ChatGPT: $($log.Trim())`nTo reconnect run: `"$Node`" `"$(Join-Path $root 'ram-watch.mjs')`" login"
+function Invoke-Review {
+    # Continue: under Stop, Windows PowerShell 5.1 turns node's stderr (its error message) into an exception and the run died
+    $ErrorActionPreference = 'Continue'
+    $script:log = & $Node (Join-Path $root 'ram-watch.mjs') review $snapPath $outPath 2>&1 | ForEach-Object { "$_" } | Out-String
+    $LASTEXITCODE -eq 0 -and (Test-Path $outPath)
+}
+$ok = Invoke-Review
+$signedOut = $log -match 'Not connected to ChatGPT|unauthori|\b401\b'
+if (-not $ok -and -not $signedOut) { Start-Sleep 60; $ok = Invoke-Review }   # one retry: network blip, API hiccup, busy PC
+if (-not $ok) {
+    $reason = if ($log.Trim()) { $log.Trim() } else { 'no answer - the call was interrupted (e.g. the PC was overloaded and the watchdog stopped it)' }
+    $text = if ($signedOut) {
+        "STATUS: ALERT`nRAM watch is not connected to ChatGPT: $reason`nTo reconnect run: `"$Node`" `"$(Join-Path $root 'ram-watch.mjs')`" login"
+    } elseif ($Trigger) {
+        # the local rules saw something real; show it unreviewed rather than lose it
+        "STATUS: ALERT`nThe model review failed ($reason), so these local findings are shown unreviewed:`n" + (($Trigger | ForEach-Object { "- $_" }) -join "`n")
+    } else {
+        # scheduled run, nothing fired locally: no popup, the next run tries again
+        "STATUS: ERROR`nThe scheduled model review failed ($reason). No local rule had fired; the next run tries again."
+    }
 } else {
     $text = [IO.File]::ReadAllText($outPath, [Text.Encoding]::UTF8)
     Remove-Item $outPath -Force

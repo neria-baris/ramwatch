@@ -64,7 +64,7 @@ if ($js -notmatch 'reasoningEffort') {
 
 # ---- 3. scheduled tasks (hidden: conhost --headless, never two copies at once) ----
 function Act($script) { New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$root\$script`"" }
-function New-TaskSettings([int]$minutes) { New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes $minutes) -MultipleInstances IgnoreNew }
+function New-TaskSettings([int]$minutes) { New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes $minutes) -MultipleInstances IgnoreNew -Priority 6 }
 Register-ScheduledTask -TaskName 'RamWatch' -Action (Act 'ram-watch.ps1') -Settings (New-TaskSettings 15) -Force `
     -Trigger @((New-ScheduledTaskTrigger -Daily -At 10:00), (New-ScheduledTaskTrigger -Daily -At 20:00)) -Description 'RamWatch: ChatGPT review at 10:00 and 20:00' | Out-Null
 Register-ScheduledTask -TaskName 'RamWatchMonitor' -Action (Act 'ram-monitor.ps1') -Settings (New-TaskSettings 15) -Force `

@@ -4,6 +4,9 @@
 $script:Gh = if (Test-Path 'C:\Program Files\GitHub CLI\gh.exe') { 'C:\Program Files\GitHub CLI\gh.exe' } else { (Get-Command gh -EA SilentlyContinue).Source }
 
 function Put-RepoFile([string]$repo, [string]$repoPath, [string]$localPath, [string]$message) {
+    # The callers run with ErrorActionPreference=Stop, and in Windows PowerShell 5.1 that turns gh's stderr into a
+    # terminating error even with 2>$null - so the expected 404 for a file that isn't uploaded yet aborted every sync.
+    $ErrorActionPreference = 'Continue'
     $sha = $null
     $existing = & $script:Gh api "repos/$repo/contents/$repoPath" --jq .sha 2>$null
     if ($LASTEXITCODE -eq 0 -and $existing) { $sha = $existing.Trim() }
