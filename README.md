@@ -39,6 +39,8 @@ summaries. No file contents.
 - Reviews use fresh data: an old daily battery reading is re-measured, and alerts from the last 48 h are passed to the
   model so a known, unchanged problem doesn't pop up again. A failed model call is retried once; if it still fails,
   the local findings are shown unreviewed (a scheduled run with nothing found just logs `STATUS: ERROR`, no popup).
+- No network, no popup: when ChatGPT can't be reached because the PC is offline, the review (and what triggered it)
+  waits in `pending.json` and runs with fresh data as soon as the 15-minute check sees the network again.
 
 ## Install
 

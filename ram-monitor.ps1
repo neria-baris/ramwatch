@@ -93,11 +93,14 @@ $due = @($fired | Where-Object { -not $state.cooldown[$_.key] -or ($now - [datet
 if ($due.Count) {
     foreach ($d in $due) { $state.cooldown[$d.key] = $now.ToString('s') }
     & (Join-Path $root 'ram-watch.ps1') -Trigger @($due | ForEach-Object { $_.why }) | Out-Null
+} elseif ((Test-Path (Join-Path $root 'pending.json')) -and (Test-Online)) {
+    # a review queued while the PC was offline: run it now that the network is back
+    & (Join-Path $root 'ram-watch.ps1') | Out-Null; $ranQueued = $true
 }
 
 # ---- hourly GitHub push (also right after an escalation) ----
 $sync = ''
-if ($due.Count -or -not $state.last_push -or ($now - [datetime]$state.last_push).TotalMinutes -ge 55) {
+if ($due.Count -or $ranQueued -or -not $state.last_push -or ($now - [datetime]$state.last_push).TotalMinutes -ge 55) {
     try { $sync = Sync-RamWatchData $root $state; $state.last_push = $now.ToString('s') } catch { $sync = "sync error: $($_.Exception.Message)" }
 }
 
@@ -105,7 +108,7 @@ foreach ($k in @($state.cooldown.Keys)) { if (($now - [datetime]$state.cooldown[
 $state.last_sample = $now.ToString('s')
 [IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
 
-$logLine = "$($now.ToString('s')) fired=$($fired.Count) escalated=$($due.Count) $sync"
+$logLine = "$($now.ToString('s')) fired=$($fired.Count) escalated=$($due.Count)$(if ($ranQueued) { ' queued-review=ran' }) $sync"
 Add-Content (Join-Path $root 'monitor.log') $logLine
 if ((Get-Item (Join-Path $root 'monitor.log')).Length -gt 200KB) { Get-Content (Join-Path $root 'monitor.log') -Tail 500 | Set-Content (Join-Path $root 'monitor.log') }
 $logLine

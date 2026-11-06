@@ -171,6 +171,12 @@ Add-Type -AssemblyName System.Windows.Forms
 
 # ---------- daily health (slower queries; each one is time-boxed in a child process) ----------
 # Runs $block in a separate PowerShell job; a hung driver/WMI call is killed after $seconds.
+# Can the PC reach ChatGPT at all? A 5 s TCP connect - no network, no DNS or a dead link all give $false.
+function Test-Online([string]$hostName = 'chatgpt.com', [int]$ms = 5000) {
+    $c = New-Object Net.Sockets.TcpClient
+    try { $c.ConnectAsync($hostName, 443).Wait($ms) -and $c.Connected } catch { $false } finally { $c.Close() }
+}
+
 function Invoke-WithTimeout([scriptblock]$block, [int]$seconds, [object[]]$arguments = @()) {
     $job = Start-Job -ScriptBlock $block -ArgumentList $arguments
     if (Wait-Job $job -Timeout $seconds) { $r = Receive-Job $job -EA SilentlyContinue; Remove-Job $job -Force; return [pscustomobject]@{ ok = $true; value = $r } }

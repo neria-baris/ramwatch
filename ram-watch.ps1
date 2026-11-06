@@ -15,9 +15,23 @@ $reportDir = Join-Path $root 'reports'
 New-Item -ItemType Directory -Force $reportDir | Out-Null
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
 if (-not $Node) { $Node = 'node' }
+# A review that could not run because the PC was offline waits in pending.json - no popup - and runs, with fresh
+# data, once the network is back (ram-monitor.ps1 checks every 15 minutes).
+$pendingPath = Join-Path $root 'pending.json'
+$queued = $null
+if (Test-Path $pendingPath) { try { $queued = Get-Content $pendingPath -Raw | ConvertFrom-Json } catch { } }
+$ownTrigger = @($Trigger | Where-Object { $_ })
+if ($queued) { $Trigger = @($ownTrigger) + @($queued.triggers | Where-Object { $_ } | ForEach-Object { "(found while offline, since $($queued.since)) $_" }) }
+function Save-Pending([string]$why) {
+    $all = @(@($queued.triggers) + $ownTrigger | Where-Object { $_ } | Select-Object -Unique | Select-Object -Last 20)
+    $o = [ordered]@{ since = $(if ($queued.since) { $queued.since } else { (Get-Date).ToString('s') }); last_try = (Get-Date).ToString('s'); reason = $why; triggers = $all }
+    [IO.File]::WriteAllText($pendingPath, ($o | ConvertTo-Json -Depth 3), (New-Object Text.UTF8Encoding $false))
+    Write-Output "STATUS: PENDING - $why; the review is queued in pending.json and runs once the PC is online"
+}
 
 # ---------- collect ----------
 . (Join-Path $root 'collect.ps1')
+if (-not (Test-Online)) { Save-Pending 'no network'; return }
 $snapshot = Get-RamSnapshot
 $snapshot.health = Get-HealthSample -Since (Get-Date).AddHours(-24)
 $dailyFile = Get-ChildItem (Join-Path $root 'daily') -Filter '*.json' -EA SilentlyContinue | Sort-Object Name | Select-Object -Last 1
@@ -58,6 +72,10 @@ function Invoke-Review {
 $ok = Invoke-Review
 $signedOut = $log -match 'Not connected to ChatGPT|unauthori|\b401\b'
 if (-not $ok -and -not $signedOut) { Start-Sleep 60; $ok = Invoke-Review }   # one retry: network blip, API hiccup, busy PC
+if (-not $ok -and -not $signedOut -and ($log -match 'fetch failed|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|socket hang up|UND_ERR' -or -not (Test-Online))) {
+    Remove-Item $snapPath -Force -EA SilentlyContinue
+    Save-Pending 'network lost during the review'; return
+}
 if (-not $ok) {
     $reason = if ($log.Trim()) { $log.Trim() } else { 'no answer - the call was interrupted (e.g. the PC was overloaded and the watchdog stopped it)' }
     $text = if ($signedOut) {
@@ -73,6 +91,7 @@ if (-not $ok) {
     $text = [IO.File]::ReadAllText($outPath, [Text.Encoding]::UTF8)
     Remove-Item $outPath -Force
 }
+Remove-Item $pendingPath -Force -EA SilentlyContinue   # anything queued is in this report now
 $model = if ($log -match 'model=(\S+)') { $Matches[1] } else { 'n/a' }
 $why = if ($Trigger) { "monitor trigger: " + ($Trigger -join '; ') } else { 'scheduled' }
 
