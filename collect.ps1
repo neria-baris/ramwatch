@@ -200,6 +200,28 @@ $script:HealthEventIds = @{
 }
 
 # First present device of $class whose name matches the earliest pattern (patterns in priority order).
+# Current power state of a device from the PnP manager, in milliseconds and without touching the device:
+# 0 = D0 (on) ... 3 = D3 (powered down), -1 = unknown. nvidia-smi would wake a sleeping GPU, so read this first.
+function Get-DeviceDState([string]$instanceId) {
+    if (-not ('RwPnp' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public static class RwPnp {
+  [StructLayout(LayoutKind.Sequential)] public struct DEVPROPKEY { public Guid fmtid; public uint pid; }
+  [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] static extern int CM_Locate_DevNodeW(out uint dn, string id, uint flags);
+  [DllImport("cfgmgr32.dll")] static extern int CM_Get_DevNode_PropertyW(uint dn, ref DEVPROPKEY key, out uint type, byte[] buf, ref uint size, uint flags);
+  public static int DState(string id) {
+    uint dn; if (CM_Locate_DevNodeW(out dn, id, 0) != 0) return -1;
+    var key = new DEVPROPKEY { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 32 };   // DEVPKEY_Device_PowerData
+    uint type, size = 64; var buf = new byte[64];
+    if (CM_Get_DevNode_PropertyW(dn, ref key, out type, buf, ref size, 0) != 0) return -1;
+    return BitConverter.ToInt32(buf, 4) - 1;
+  }
+}
+"@
+    }
+    [RwPnp]::DState($instanceId)
+}
 function Get-DeviceState([string]$class, [string[]]$patterns, [string[]]$exclude = @()) {
     if (-not $script:PnpCache) { $script:PnpCache = @(Get-PnpDevice -PresentOnly -Class Display, Bluetooth, Net -EA SilentlyContinue) }
     $cands = @($script:PnpCache | Where-Object { $_.Class -eq $class -and $_.FriendlyName } |
@@ -207,7 +229,7 @@ function Get-DeviceState([string]$class, [string[]]$patterns, [string[]]$exclude
     $d = $null
     foreach ($p in $patterns) { $d = $cands | Where-Object FriendlyName -like $p | Select-Object -First 1; if ($d) { break } }
     if (-not $d) { return [ordered]@{ present = $false } }
-    [ordered]@{ present = $true; name = $d.FriendlyName; status = "$($d.Status)"; problem = "$($d.Problem)" }
+    [ordered]@{ present = $true; name = $d.FriendlyName; status = "$($d.Status)"; problem = "$($d.Problem)"; d_state = Get-DeviceDState $d.InstanceId }
 }
 
 function Get-HealthSample([datetime]$Since) {
@@ -215,7 +237,7 @@ function Get-HealthSample([datetime]$Since) {
     $zones = Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation -OperationTimeoutSec 5 -EA SilentlyContinue |
         ForEach-Object { [ordered]@{ zone = $_.Name; c = $_.Temperature - 273; passive_limit_pct = $_.PercentPassiveLimit; throttle = $_.ThrottleReasons } }
     $gpu = Get-DeviceState 'Display' '*NVIDIA*', '*Radeon*', '*Arc*'   # the discrete GPU, if any
-    if ($gpu.status -eq 'OK') {
+    if ($gpu.status -eq 'OK' -and $gpu.d_state -ne 3) {   # a health check must not wake a sleeping GPU
         $smi = & "$env:SystemRoot\System32\nvidia-smi.exe" --query-gpu=temperature.gpu,power.draw,pstate,utilization.gpu --format=csv,noheader,nounits 2>$null
         if ($LASTEXITCODE -eq 0 -and $smi) { $v = ($smi -split ',').Trim(); $gpu.temp_c = $v[0]; $gpu.power_w = $v[1]; $gpu.pstate = $v[2]; $gpu.util_pct = $v[3] }
     }

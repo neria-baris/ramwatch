@@ -8,7 +8,7 @@ $root = $PSScriptRoot
 try { (Get-Process -Id $PID).PriorityClass = 'Normal' } catch { }
 # watchdog: never let an older RamWatch run linger (a hung WMI/event-log call, a stuck node child)
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='node.exe' OR Name='gh.exe'" -EA SilentlyContinue |
-    Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'RamWatch' -and $_.CommandLine -notmatch 'popup\.ps1' -and $_.CreationDate -lt (Get-Date).AddMinutes(-20) } |
+    Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match 'RamWatch' -and $_.CommandLine -notmatch 'popup\.ps1|run-in-job\.ps1' -and $_.CreationDate -lt (Get-Date).AddMinutes(-20) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue }
 . (Join-Path $root 'collect.ps1')
 . (Join-Path $root 'github-sync.ps1')
