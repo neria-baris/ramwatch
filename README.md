@@ -24,6 +24,7 @@ Rules that escalate (`ram-monitor.ps1`, thresholds at the top of the file):
 - a single process holding ≥ 4 GB private memory for over 24 h
 - unexpected shutdowns, BSODs, GPU driver resets, WHEA errors, Bluetooth driver errors
 - the discrete GPU or Bluetooth device changing state, thermal throttling / ≥ 90 °C
+- the embedded controller not responding (ACPI 13)
 
 What gets sent to the model: process names, counts, memory, ages, flag **names** of command lines (values
 stripped, token-like strings redacted), script file names, kernel pool tags, device states, and event-log
@@ -89,7 +90,8 @@ PCs, and applying your `startup-config.json`.
 - `disable-startup.ps1 -WhatIf` – preview the auto-start changes before applying them.
 - `run-in-job.ps1 [-TimeoutSec N] <program> [args...]` – runs a program in a Windows Job Object that is killed when
   the wrapper ends, so nothing it started (a headless browser from a print script or an MCP server, for example) can
-  outlive it. Prints nothing itself, so it also works as an MCP server `command`. Tell your coding agents to run
+  outlive it. Stops after 20 minutes unless told otherwise (`-TimeoutSec 0` = no limit, for long jobs and MCP servers).
+  Prints nothing itself, so it also works as an MCP server `command`. Tell your coding agents to run
   browser-launching scripts through it, e.g. in `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`.
 
 ## Handy commands

@@ -86,6 +86,9 @@ foreach ($b in $snap.big_processes | Where-Object { $_.private_mb -ge $BigOldMB 
     Fire "big_old:$($b.name)" 24 "$($b.name) holds $($b.private_mb) MB after $($b.age_h) h"
 }
 foreach ($z in $health.thermal | Where-Object { $_.c -ge $HotC -or $_.throttle -ne 0 }) { Fire "hot:$($z.zone)" 6 "thermal zone $($z.zone) at $($z.c) C, throttle=$($z.throttle)" }
+# the embedded controller (battery, charger, lid, hotkeys, often the radio switch) stopped answering; comes in bursts
+$ec = @($health.events | Where-Object { $_.src -eq 'ACPI' -and $_.id -eq 13 })
+if ($ec) { Fire 'ec_timeout' 1 "embedded controller did not respond ($($ec.Count)x, around $($ec[0].t))" }
 foreach ($e in $health.events) {
     $crash = (($e.src -eq 'Microsoft-Windows-Kernel-Power' -and $e.id -eq 41) -or
               ($e.src -eq 'EventLog' -and $e.id -eq 6008) -or

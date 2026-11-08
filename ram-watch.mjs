@@ -44,6 +44,9 @@ a single long-running process whose private memory keeps growing, commit charge 
 (normal is under ~1000 MB; "kernel_pool_top_tags" shows which pool tags hold it - name the driver if you recognise the tag).
 Ignore normal Windows/system processes and normal app usage (an open browser, an editor, etc.).
 The "health" section has power (AC/battery), thermal zones, GPU / Bluetooth / Wi-Fi device state, free space on C:, and System-log events.
+ACPI 13 means the embedded controller (battery, charger, lid, hotkeys, often the radio switch) stopped answering: a firmware or
+hardware fault that can explain Wi-Fi dropping, battery queries hanging and devices failing to power up; suggest checking for a
+BIOS/EC update.
 Flag: Kernel-Power 41 / EventLog 6008 (unexpected shutdown), BugCheck 1001, nvlddmkm/Display 4101 (GPU driver resets), WHEA hardware errors,
 Bluetooth driver errors, frequent Kernel-Power 105 (AC/battery switching = unstable power), high temperatures or thermal throttling.
 A device disabled on purpose (CM_PROB_DISABLED / code 22) is worth reporting but is not an error by itself.

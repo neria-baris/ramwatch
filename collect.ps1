@@ -192,11 +192,12 @@ $script:HealthEventProviders = @(
     'BTHUSB', 'BthEnum', 'BthMini', 'BTHPORT',        # Bluetooth stack
     'Microsoft-Windows-Kernel-PnP',                   # device failed to start / surprise removal
     'User32',                                         # 1074 who/what initiated a shutdown or restart
-    'Microsoft-Windows-Power-Troubleshooter'          # 1 resumed from sleep (with wake source)
+    'Microsoft-Windows-Power-Troubleshooter',         # 1 resumed from sleep (with wake source)
+    'ACPI'                                            # 13 the embedded controller did not respond
 )
 $script:HealthEventIds = @{
     'Microsoft-Windows-Kernel-Power' = 41, 42, 105, 107, 172   # + 42 entering sleep, 107 resumed
-    'EventLog' = 6008; 'Microsoft-Windows-Kernel-PnP' = 219, 411; 'User32' = 1074
+    'EventLog' = 6008; 'Microsoft-Windows-Kernel-PnP' = 219, 411; 'User32' = 1074; 'ACPI' = 13
 }
 
 # First present device of $class whose name matches the earliest pattern (patterns in priority order).

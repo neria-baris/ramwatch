@@ -2,7 +2,7 @@
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File run-in-job.ps1 <program> [arguments...]
 #   e.g.  ... run-in-job.ps1 python make_pdf.py report.html
-#         ... run-in-job.ps1 npx @playwright/mcp@latest          (also as an MCP server "command": stdio passes through)
+#         ... run-in-job.ps1 -TimeoutSec 0 npx @playwright/mcp@latest   (also as an MCP server "command": stdio passes through)
 #
 # The wrapper puts itself in a Windows Job Object with "kill on job close" and then starts the program, so the program
 # and every process it starts (headless browsers included) are in the job. When the wrapper ends - normally, killed,
@@ -10,8 +10,10 @@
 # that forgets browser.close() can no longer leave a browser behind.
 # Prints nothing itself (safe for stdio protocols); exit code = the program's exit code.
 #   -TimeoutSec N (first argument): stop after N seconds - the program and everything it started - exit code 124.
-#   Use it for one-shot jobs such as printing: headless Edge, for one, writes the PDF but then keeps running.
-$timeout = 0
+#   The default is 1200 s (20 min), so a job that hangs can't stay forever: headless Edge, for one, writes the PDF but
+#   then keeps running, and a browser whose wrapper is still alive doesn't count as orphaned. For anything meant to run
+#   longer, say so: -TimeoutSec 0 means no limit (long computations, MCP servers).
+$timeout = 1200
 if ($args.Count -ge 2 -and $args[0] -eq '-TimeoutSec') { $timeout = [int]$args[1]; $args = @($args | Select-Object -Skip 2) }
 if (-not $args) { [Console]::Error.WriteLine('usage: run-in-job.ps1 [-TimeoutSec N] <program> [arguments...]'); exit 2 }
 $ErrorActionPreference = 'Stop'
