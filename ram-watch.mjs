@@ -68,6 +68,8 @@ When they disagree, the newer data wins - never alert on an old reading that the
 "previous_alerts" are alerts the owner already got in the last 48 h. A problem that is already there and has NOT gotten worse,
 and anything the machine notes say is fixed or known, is not a new alert: list it briefly under "known, unchanged".
 Use "STATUS: ALERT" only for something new, worse than before, or needing action now.
+The owner is not a systems expert: the first time a technical term appears (commit charge, page file, non-paged pool,
+embedded controller, D3...), explain it in a few plain words in parentheses.
 Be short and concrete. The FIRST line must be exactly "STATUS: OK" or "STATUS: ALERT".
 Then: a 1-2 line summary, then a bullet list of problems (what, how many, how much memory, why it looks stuck), then what to close or do.
 If everything is fine, say so briefly. Answer in English unless the machine notes below ask for another language.`;
